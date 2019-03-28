@@ -13,19 +13,23 @@ at::Tensor bilinear_forward(at::Tensor& z) {
   int h = z.size(2);
   int w = z.size(3);
 
-  at::Tensor out = at::zeros_like(z);
+  at::Tensor to = at::zeros_like(z);
+  float* out = to.data<float>();
 
   // TODO: support multiple types
-  float* t = static_cast<float*>(out.data<float>());
+  float* t = static_cast<float*>(z.data<float>());
 
-  #pragma omp parallel for
+//  #pragma omp parallel for
+  out[0] = lerp(t[0], t[1], 0.5f);
+
+/*
   for (int i = 0; i < n; i++) {
     for (int j = 0; j < c; ++j) {
       for (int k = 0; k < h; ++k) {
         for (int l = 0; l < w; ++l) {
           if (l < (w - 1)) {
 	    int addr = n * (c*h*w) + c * (h * w) + h * w + w;
-            out[addr] = lerp(t[addr], t[addr + 1], 0.5f);
+            out[0] = lerp(t[0], t[1], 0.5f); //lerp(t[addr], t[addr + 1], 0.5f);
 	    // TODO: Support multiple types
 	    
           }
@@ -33,8 +37,9 @@ at::Tensor bilinear_forward(at::Tensor& z) {
       }
     }
   }
+*/
 
-  return out;
+  return to;
 }
 
 at::Tensor bilinear_backward(at::Tensor& z) {
@@ -43,6 +48,6 @@ at::Tensor bilinear_backward(at::Tensor& z) {
 
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  m.def("forward", &bilinear_forward, "bilinear_forward");
-  m.def("backward", &bilinear_backward, "bilinear_backward");
+  m.def("bilinear_forward", &bilinear_forward, "bilinear forward");
+  m.def("bilinear_backward", &bilinear_backward, "bilinear backward");
 }
