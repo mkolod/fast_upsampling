@@ -1,11 +1,12 @@
 #include <torch/torch.h>
+#include "nv_upsampling.h"
 
 template <typename T>
 inline T lerp(T v0, T v1, T t) {
     return (1-t)*v0 + t*v1;
 }
 
-at::Tensor bilinear_forward(at::Tensor& z) {
+at::Tensor bilinear_forward_cpu(at::Tensor& z) {
   // Makes sure it's NCHW
   assert(z.ndim() == 4);
   int n = z.size(0);
@@ -40,6 +41,23 @@ at::Tensor bilinear_forward(at::Tensor& z) {
 */
 
   return to;
+}
+
+at::Tensor bilinear_backward_cpu(at::Tensor& z) {
+  return z;
+}
+
+at::Tensor bilinear_forward_gpu(at::Tensor& z) {
+  return bilinear_forward_gpu_kernel_wrapper(z);
+}
+
+at::Tensor bilinear_backward_gpu(at::Tensor& z) {
+  return bilinear_backward_gpu_kernel_wrapper(z);
+}
+
+at::Tensor bilinear_forward(at::Tensor& z) {
+
+  return z;
 }
 
 at::Tensor bilinear_backward(at::Tensor& z) {
