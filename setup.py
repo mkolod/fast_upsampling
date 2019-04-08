@@ -4,20 +4,20 @@ from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 setup(name='nv_upsampling_cuda',
 
       ext_modules=[
-          CUDAExtension('nv_upsampling_cuda', ['nv_upsampling.cpp', 'nv_upsampling_cuda_kernel.cu'])],
+          CUDAExtension('nv_upsampling_cuda', ['nv_upsampling.cpp', 'nv_upsampling_cuda_kernel.cu'],
 
       extra_compile_args={
-        'cxx':  ['-std=c++14', '-O2', '--use_fast_math'],
+        'cxx':  ['-std=c++14', '-O3', '-Wall'],
         'nvcc': [
             '-gencode',   'arch=compute_70,code=sm_70',
             '-gencode',   'arch=compute_75,code=sm_75',
             '-gencode',   'arch=compute_70,code=compute_70',
-#            '-Xcompiler', '-Wall',
+            '-Xcompiler', '-Wall',
             '-std=c++14',
-            '-O2',
+            '-O3',
             '--use_fast_math'
             ]
-        },
+        })],
 
       cmdclass={'build_ext': BuildExtension})
 
