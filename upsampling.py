@@ -1,5 +1,5 @@
 import torch
-import nv_upsampling
+import nv_upsampling_cuda
 
 class InterpolationFunction(torch.autograd.Function):
     @staticmethod
