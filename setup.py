@@ -1,7 +1,7 @@
 from setuptools import setup
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
-setup(name='nv_upsampling_cuda',
+setup(name='nv_upsampling',
 
       ext_modules=[
           CUDAExtension('nv_upsampling_cuda', ['nv_upsampling.cpp', 'nv_upsampling_cuda_kernel.cu'],
