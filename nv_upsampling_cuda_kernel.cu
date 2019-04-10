@@ -1,5 +1,9 @@
 #include <ATen/ATen.h>
 
+//#include "caffe2/core/context_gpu.h"
+//#include "caffe2/operators/upsample_op.h"
+//#include "caffe2/utils/math.h"
+
 #include "bilinear.h"
 
 #include <cuda.h>
@@ -19,8 +23,6 @@ __device__ __forceinline__ void fastFp16AtomicAdd(__half* __restrict__ tensor,
   int addr = __alignof(tensor);
   bool tensor_aligned = addr % 4 == 0;
 
-  // Actually it's not that index < numel - 1
-  // but that it's not the last element if numel is even
   if (tensor_aligned) {
     __half2 value2;
 
@@ -40,10 +42,6 @@ __device__ __forceinline__ void fastFp16AtomicAdd(__half* __restrict__ tensor,
    }
 }
 
-template<typename scalar_t>
-__device__ bool between(scalar_t value, int lowerBound, int upperBound) {
-  return (value >= lowerBound && value <= upperBound);
-}
 
 /*
 def bilinear_upsample(input, new_h, new_w):
@@ -133,6 +131,212 @@ __global__ void caffe_gpu_interp2_kernel(const int n,
 }
 */
 
+__device__ __forceinline__ int idx(
+    const int n,
+    const int num_channels,
+    const int c,
+    const int height,
+    const int width,
+    const int y,
+    const int x) {
+  return ((n * num_channels + c) * height + y) * width + x;
+}
+
+// input is X, output is Y
+template <typename scalar_t>
+__global__ void bilinearForwardKernel(
+    const int output_size,
+    const int num_channels,
+    const int input_height,
+    const int input_width,
+    const int output_height,
+    const int output_width,
+    const scalar_t* const  __restrict__ X,
+    scalar_t* const __restrict__ Y) {
+
+  // TODO: Use ldg wherever possible
+
+  for (size_t index = blockDim.x * blockIdx.x + threadIdx.x; index < output_size; index += blockDim.x * gridDim.x) {
+
+//  CUDA_1D_KERNEL_LOOP(index, output_size) {
+    int indexTemp = index;
+    const int out_x = indexTemp % output_width;
+    indexTemp /= output_width;
+    const int out_y = indexTemp % output_height;
+    indexTemp /= output_height;
+    const int c = indexTemp % num_channels;
+    indexTemp /= num_channels;
+    const int n = indexTemp;
+
+    const float height_scale = 1.0f * output_height / input_height;
+    const float width_scale = 1.0f * output_width / input_width;
+
+    const int in_y = fminf(out_y / height_scale, input_height - 1);
+    const int in_x = fminf(out_x / width_scale, input_width - 1);
+
+    const float rheight =
+        output_height > 1 ? (input_height - 1.f) / (output_height - 1.f) : 0.f;
+    const float rwidth =
+        output_width > 1 ? (input_width - 1.f) / (output_width - 1.f) : 0.f;
+
+    // Compute Y axis lambdas
+    const float h1r = rheight * out_y;
+    const int h1 = static_cast<int>(h1r);
+    const int h1p = (h1 < input_height - 1) ? 1 : 0;
+    const float h1lambda = h1r - h1;
+    const float h0lambda = 1.f - h1lambda;
+
+    // Compute X axis lambdas
+    const float w1r = rwidth * out_x;
+    const int w1 = static_cast<int>(w1r);
+    const int w1p = (w1 < input_width - 1) ? 1 : 0;
+    const float w1lambda = w1r - w1;
+    const float w0lambda = 1.f - w1lambda;
+
+    Y[index] =
+        static_cast<scalar_t>(h0lambda *
+             (w0lambda *
+                  __ldg(&X[idx(
+                      n, num_channels, c, input_height, input_width, h1, w1)]) +
+              w1lambda *
+                  __ldg(&X[idx(
+                      n,
+                      num_channels,
+                      c,
+                      input_height,
+                      input_width,
+                      h1,
+                      w1 + w1p)])) +
+         h1lambda *
+             (w0lambda *
+                  __ldg(&X[idx(
+                      n,
+                      num_channels,
+                      c,
+                      input_height,
+                      input_width,
+                      h1 + h1p,
+                      w1)]) +
+              w1lambda *
+                  __ldg(X[idx(
+                      n,
+                      num_channels,
+                      c,
+                      input_height,
+                      input_width,
+                      h1 + h1p,
+                      w1 + w1p)])));
+
+/*
+    Y[index] =
+        static_cast<scalar_t>(h0lambda *
+             (w0lambda *
+                  X[idx(
+                      n, num_channels, c, input_height, input_width, h1, w1)] +
+              w1lambda *
+                  X[idx(
+                      n,
+                      num_channels,
+                      c,
+                      input_height,
+                      input_width,
+                      h1,
+                      w1 + w1p)]) +
+         h1lambda *
+             (w0lambda *
+                  X[idx(
+                      n,
+                      num_channels,
+                      c,
+                      input_height,
+                      input_width,
+                      h1 + h1p,
+                      w1)] +
+              w1lambda *
+                  X[idx(
+                      n,
+                      num_channels,
+                      c,
+                      input_height,
+                      input_width,
+                      h1 + h1p,
+                      w1 + w1p)]));
+*/
+  }
+}
+
+// input is dY, output is dX
+template <typename scalar_t>
+__global__ void bilinearForwardKernell(
+    const int input_size,
+    const int num_channels,
+    const int input_height,
+    const int input_width,
+    const int output_height,
+    const int output_width,
+    const float height_scale,
+    const float width_scale,
+    const scalar_t* const __restrict__ dY,
+    scalar_t* const __restrict__ dX) {
+
+    for (size_t index = blockDim.x * blockIdx.x + threadIdx.x; index < input_size; index += blockDim.x * gridDim.x) {
+
+    int indexTemp = index;
+    const int in_x = indexTemp % input_width;
+    indexTemp /= input_width;
+    const int in_y = indexTemp % input_height;
+    indexTemp /= input_height;
+    const int c = indexTemp % num_channels;
+    indexTemp /= num_channels;
+    const int n = indexTemp;
+
+    const int out_y = fminf(in_y / height_scale, output_height - 1);
+    const int out_x = fminf(in_x / width_scale, output_width - 1);
+
+    const float rheight =
+        output_height > 1 ? (output_height - 1.f) / (input_height - 1.f) : 0.f;
+    const float rwidth =
+        output_width > 1 ? (output_width - 1.f) / (input_width - 1.f) : 0.f;
+
+    // Compute Y axis lambdas
+    const float h1r = rheight * in_y;
+    const int h1 = static_cast<int>(h1r);
+    const int h1p = (h1 < output_height - 1) ? 1 : 0;
+    const float h1lambda = h1r - h1;
+    const float h0lambda = 1.f - h1lambda;
+
+    // Compute X axis lambdas
+    const float w1r = rwidth * in_x;
+    const int w1 = static_cast<int>(w1r);
+    const int w1p = (w1 < output_width - 1) ? 1 : 0;
+    const float w1lambda = w1r - w1;
+    const float w0lambda = 1.f - w1lambda;
+
+    const scalar_t dYi = __ldg(&dY[index]);
+
+    atomicAdd(
+        &dX[idx(n, num_channels, c, output_height, output_width, h1, w1)],
+        h0lambda * w0lambda * dYi);
+    atomicAdd(
+        &dX[idx(n, num_channels, c, output_height, output_width, h1, w1 + w1p)],
+        h0lambda * w1lambda * dYi);
+    atomicAdd(
+        &dX[idx(n, num_channels, c, output_height, output_width, h1 + h1p, w1)],
+        h1lambda * w0lambda * dYi);
+    atomicAdd(
+        &dX[idx(
+            n,
+            num_channels,
+            c,
+            output_height,
+            output_width,
+            h1 + h1p,
+            w1 + w1p)],
+        h1lambda * w1lambda * dYi);
+  }
+}
+
+/*
 template<typename scalar_t>
 __global__ void bilinearForwardKernel(const int i_n, const int i_c, const int i_h,
                                       const int i_w,
@@ -143,11 +347,6 @@ __global__ void bilinearForwardKernel(const int i_n, const int i_c, const int i_
   // grid-stride loop
 
   int globIdx = blockIdx.x * blockDim.x + threadIdx.x;
-/*
-  for (int globIdx = blockIdx.x * blockDim.x + threadIdx.x; 
-       globIdx < n; 
-       globIdx += blockDim.x * gridDim.x) { 
-*/
 
 {
 
@@ -201,18 +400,12 @@ __global__ void bilinearForwardKernel(const int i_n, const int i_c, const int i_
     const scalar_t xMix2 = (1 - xfl) * q21 + xfl * q22;
     const scalar_t yMix = static_cast<scalar_t>((1 - yfl) * xMix1 + yfl * xMix2);
 
-/*
-    printf("n=%d, c=%d, h=%d, w=%d, h1=%d, w1=%d, h2=%d, w2=%d, in_idx11=%d, in_idx12=%d, in_idx21=%d, in_idx22=%d, q11=%f, q12=%f, q21=%f, q22=%f, xMix1=%f, xMix2=%f, yMix=%f, outIdx=%d\n",
-           n, c, h, w, h1, w1, h2, w2, in_idx11, in_idx12, in_idx21, in_idx22,
-           static_cast<float>(q11), static_cast<float>(q12), static_cast<float>(q21), static_cast<float>(q22),
-           static_cast<float>(xMix1), static_cast<float>(xMix2), static_cast<float>(yMix), outIdx);
-*/
-
     out[outIdx] = yMix;
 }
 //  }
 
 }
+*/
 
 at::Tensor bilinear_cuda_forward(at::Tensor& in, const int new_h, const int new_w) {
 
@@ -237,16 +430,47 @@ at::Tensor bilinear_cuda_forward(at::Tensor& in, const int new_h, const int new_
   dim3 block(1024);
   dim3 grid((outSize + block.x - 1) / block.x);
 
+  std::cout << "Launching " << grid.x << " blocks with " << block.x << " threads per block." << std::endl;
+
 //  dim3 grid(1, 1, 1);
 //  dim3 block(1024, 1, 1);
 
-  AT_DISPATCH_FLOATING_TYPES_AND_HALF(in.type(), "bilinearForwardKernel", ([&]
-    {
-     
+/*
+__global__ void bilinearForwardKernel(
+    const int output_size,
+    const int num_channels,
+    const int input_height,
+    const int input_width,
+    const int output_height,
+    const int output_width,
+    const float height_scale,
+    const float width_scale,
+    const scalar_t* const  __restrict__ X,
+    scalar_t* const __restrict__ Y) {
+*/
+
+/*
         bilinearForwardKernel<scalar_t><<<grid, block>>>(nIn, cIn, hIn,
                                       wIn, in.data<scalar_t>(),
                                       new_h, new_w, 
                                       out.data<scalar_t>()
+                                      ); 
+*/
+
+  AT_DISPATCH_FLOATING_TYPES_AND_HALF(in.type(), "bilinearForwardKernel", ([&]
+    {
+     
+        bilinearForwardKernel<scalar_t><<<grid, block>>>(
+                                        out.numel(),
+                                        cIn,
+                                        hIn,
+                                        wIn,
+                                        new_h,
+                                        new_w,
+                                        // const float height_scale
+                                        // const float width_scale
+                                        in.data<scalar_t>(),
+                                        out.data<scalar_t>()
                                       ); 
 
     }));
