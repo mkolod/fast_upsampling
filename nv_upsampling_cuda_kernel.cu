@@ -45,24 +45,119 @@ __device__ bool between(scalar_t value, int lowerBound, int upperBound) {
   return (value >= lowerBound && value <= upperBound);
 }
 
+/*
+def bilinear_upsample(input, new_h, new_w):
+    orig_h, orig_w, channels = input.shape
+    result = np.zeros((new_h, new_w, channels)).astype(np.float32)
+    y_scale = orig_h / new_h
+    x_scale = orig_w / new_w
+    for h in range(new_h):
+        for w in range(new_w):
+            for c in range(channels):
+                y_scaled_pos = h * y_scale
+                x_scaled_pos = w * x_scale
+                y1 = int(y_scaled_pos)
+                x1 = int(x_scaled_pos)
+                y2 = min(y1 + 1, orig_h - 1)
+                x2 = min(x1 + 1, orig_w - 1)
+                q11 = input[y1][x1][c]
+                q12 = input[y1][x2][c]
+                q21 = input[y2][x1][c]
+                q22 = input[y2][x2][c]
+                yfloat = y_scaled_pos - y1
+                xfloat = x_scaled_pos - x1
+                xmix1 = (1 - xfloat) * q11 + xfloat * q12
+                xmix2 = (1 - xfloat) * q21 + xfloat * q22
+                ymix = (1 - yfloat) * xmix1 + yfloat * xmix2
+                result[h, w, c] = ymix
+               
+    return result
+*/
+
+
+// https://github.com/pytorch/pytorch/blob/master/aten/src/THCUNN/TemporalUpSamplingLinear.cu
+
+/*
+
+template<typename Acctype>
+__device__ __forceinline__
+static Acctype linear_upsampling_compute_source_index(
+                          Acctype scale, int dst_index, bool align_corners) {
+  if (align_corners) {
+    return scale * dst_index;
+  } else {
+    Acctype src_idx = scale * (dst_index + Acctype(0.5)) - Acctype(0.5);
+    return src_idx < Acctype(0) ? Acctype(0) : src_idx;
+  }
+}
+*/
+
+/*
+__global__ void caffe_gpu_interp2_kernel(const int n,
+    const Acctype rwidth, const bool align_corners,
+    const THCDeviceTensor<Dtype, 3> data1, THCDeviceTensor<Dtype, 3> data2) {
+  int index = threadIdx.x + blockIdx.x * blockDim.x;
+  const int batchsize = data1.getSize(0);
+  const int channels = data1.getSize(1);
+  const int width1 = data1.getSize(2);
+  const int width2 = data2.getSize(2);
+
+  if (index < n) {
+    const int w2 = index % width2;
+    // special case: just copy
+    if (width1 == width2) {
+      const int w1 = w2;
+      for (int n = 0; n < batchsize ; n++){
+        for (int c = 0; c < channels; ++c) {
+          const Dtype val = data1[n][c][w1];
+          data2[n][c][w2] = val;
+        }
+      }
+      return;
+    }
+    //
+    const Acctype w1r = linear_upsampling_compute_source_index<Acctype>(rwidth, w2, align_corners);
+    const int w1 = w1r;
+    const int w1p = (w1 < width1 - 1) ? 1 : 0;
+    const Acctype w1lambda = w1r - w1;
+    const Acctype w0lambda = Acctype(1) - w1lambda;
+    //
+    for (int n = 0; n < batchsize ; n++){
+        for (int c = 0; c < channels; ++c) {
+        const Acctype val = w0lambda * data1[n][c][w1]
+                            + w1lambda * data1[n][c][w1+w1p];
+        data2[n][c][w2] = ScalarConvert<Acctype, Dtype>::to(val);
+      }
+    }
+  }
+}
+*/
 
 template<typename scalar_t>
-__global__ void bilinearForwardKernel(const int n, const int i_c, const int i_h,
+__global__ void bilinearForwardKernel(const int i_n, const int i_c, const int i_h,
                                       const int i_w,
                                       const scalar_t* const __restrict__ in,
                                       const int o_h,
                                       const int o_w, scalar_t* const __restrict__ out) {
 
   // grid-stride loop
+
+  int globIdx = blockIdx.x * blockDim.x + threadIdx.x;
+/*
   for (int globIdx = blockIdx.x * blockDim.x + threadIdx.x; 
        globIdx < n; 
        globIdx += blockDim.x * gridDim.x) { 
+*/
 
-    if (globIdx > n * i_c * o_h * o_w) {
+{
+
+    if (globIdx > i_n * i_c * o_h * o_w) {
       return;
     }
 
-    const int inDim = n * i_c * i_h * i_w;
+// https://github.com/pytorch/pytorch/blob/master/aten/src/THCUNN/TemporalUpSamplingLinear.cu
+
+    const int inDim = i_n * i_c * i_h * i_w;
 
     const int w = globIdx % o_w;
     const int h = (globIdx / o_w) % o_h;
@@ -70,21 +165,23 @@ __global__ void bilinearForwardKernel(const int n, const int i_c, const int i_h,
     // TODO: check if this should be c or i_c
     const int n = globIdx / o_w / o_h / i_c;
 
-    const int outIdx = n * c * o_h * o_w + c * o_h * o_w + h * o_w + w;
+    const int outIdx = n * i_c * o_h * o_w + c * o_h * o_w + h * o_w + w;
 
     const float hScaledPos = 1.0f * i_h / o_h * h;
 
     const float wScaledPos = 1.0f * i_w / o_w * w;
 
-    const int h1 = static_cast<int>(hScaledPos);
-    const int w1 = static_cast<int>(wScaledPos);
+    const int h1 = static_cast<int>(floor(hScaledPos));
+    const int w1 = static_cast<int>(floor(wScaledPos));
     const int h2 = min(h1 + 1, i_h - 1);
     const int w2 = min(w1 + 1, i_w - 1);
 
-    const int in_idx11 = n * c * h1 * w1 + c * h1 * w1 + h1 * w1 + w1;
-    const int in_idx12 = n * c * h1 * w2 + c * h1 * w2 + h1 * w2 + w2;
-    const int in_idx21 = n * c * h2 * w1 + c * h2 * w1 + h2 * w1 + w1;
-    const int in_idx22 = n * c * h2 * w2 + c * h2 * w2 + h2 * w2 + w2;
+    const int in_idx11 = n * i_c * i_h * i_w + c * i_h * i_w + h1 * i_w + w1;
+    const int in_idx12 = n * i_c * i_h * i_w + c * i_h * i_w + h1 * i_w + w2;
+    const int in_idx21 = n * i_c * i_h * i_w + c * i_h * i_w + h2 * i_w + w1;
+    const int in_idx22 = n * i_c * i_h * i_w + c * i_h * i_w + h2 * i_w + w2;
+
+    // TODO: don't return, actually take other values like in MXNet
 
     if (in_idx11 > inDim || in_idx12 > inDim ||
         in_idx21 > inDim || in_idx22 > inDim) {
@@ -104,9 +201,16 @@ __global__ void bilinearForwardKernel(const int n, const int i_c, const int i_h,
     const scalar_t xMix2 = (1 - xfl) * q21 + xfl * q22;
     const scalar_t yMix = static_cast<scalar_t>((1 - yfl) * xMix1 + yfl * xMix2);
 
-    out[outIdx] = yMix;
+/*
+    printf("n=%d, c=%d, h=%d, w=%d, h1=%d, w1=%d, h2=%d, w2=%d, in_idx11=%d, in_idx12=%d, in_idx21=%d, in_idx22=%d, q11=%f, q12=%f, q21=%f, q22=%f, xMix1=%f, xMix2=%f, yMix=%f, outIdx=%d\n",
+           n, c, h, w, h1, w1, h2, w2, in_idx11, in_idx12, in_idx21, in_idx22,
+           static_cast<float>(q11), static_cast<float>(q12), static_cast<float>(q21), static_cast<float>(q22),
+           static_cast<float>(xMix1), static_cast<float>(xMix2), static_cast<float>(yMix), outIdx);
+*/
 
-  }
+    out[outIdx] = yMix;
+}
+//  }
 
 }
 
@@ -146,6 +250,13 @@ at::Tensor bilinear_cuda_forward(at::Tensor& in, const int new_h, const int new_
                                       ); 
 
     }));
+
+    std::cout << "Checking" << std::endl;
+    AT_CHECK(cudaGetLastError() == cudaSuccess,
+          "issue with bilinearForwardKernel, CUDA code ",
+          cudaGetLastError());
+
+    std::cout << "Checked" << std::endl;
 
   return out; 
 }

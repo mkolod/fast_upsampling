@@ -5,6 +5,8 @@ from upsampling import Interpolation
 
 fp16 = False
 
+num_runs = 1
+
 foo = torch.randn(1, 1, 5, 5).cuda()
 if fp16:
     foo = foo.half()
@@ -13,7 +15,8 @@ if fp16:
 
 print("Reference implementation")
 
-bar = F.interpolate(foo, scale_factor=2, mode='bilinear', align_corners=False)
+for i in range(num_runs):
+    bar = F.interpolate(foo, scale_factor=2, mode='bilinear', align_corners=False)
 
 print(foo)
 
@@ -23,7 +26,9 @@ print(bar)
 
 interp = Interpolation()
 
-baz = interp(foo, 10, 10)
+
+for i in range(num_runs):
+    baz = interp(foo, 10, 10)
 
 print("My implementation")
 
@@ -32,6 +37,7 @@ print(baz)
 print("Diff")
 
 print(bar - baz)
+#print(torch.abs(bar - baz) / torch.abs(bar) * 100)
 
 #baz = bar.sum()
 # baz.backward()
