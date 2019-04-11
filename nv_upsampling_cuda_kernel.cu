@@ -196,41 +196,6 @@ __global__ void bilinearForwardKernel(
     Y[index] =
         static_cast<scalar_t>(h0lambda *
              (w0lambda *
-                  __ldg(&X[idx(
-                      n, num_channels, c, input_height, input_width, h1, w1)]) +
-              w1lambda *
-                  __ldg(&X[idx(
-                      n,
-                      num_channels,
-                      c,
-                      input_height,
-                      input_width,
-                      h1,
-                      w1 + w1p)])) +
-         h1lambda *
-             (w0lambda *
-                  __ldg(&X[idx(
-                      n,
-                      num_channels,
-                      c,
-                      input_height,
-                      input_width,
-                      h1 + h1p,
-                      w1)]) +
-              w1lambda *
-                  __ldg(X[idx(
-                      n,
-                      num_channels,
-                      c,
-                      input_height,
-                      input_width,
-                      h1 + h1p,
-                      w1 + w1p)])));
-
-/*
-    Y[index] =
-        static_cast<scalar_t>(h0lambda *
-             (w0lambda *
                   X[idx(
                       n, num_channels, c, input_height, input_width, h1, w1)] +
               w1lambda *
@@ -261,7 +226,6 @@ __global__ void bilinearForwardKernel(
                       input_width,
                       h1 + h1p,
                       w1 + w1p)]));
-*/
   }
 }
 
