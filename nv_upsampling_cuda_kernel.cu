@@ -282,6 +282,7 @@ __global__ void bilinearBackwardKernel(
   }
 }
 
+/*
 template <typename scalar_t>
 void printType() {
   if (std::is_same<float, scalar_t>::value) {
@@ -295,6 +296,7 @@ void printType() {
   }
 
 }
+*/
 
 at::Tensor bilinear_cuda_forward(at::Tensor& in, const int new_h, const int new_w) {
 
@@ -317,11 +319,13 @@ at::Tensor bilinear_cuda_forward(at::Tensor& in, const int new_h, const int new_
   const dim3 block(1024);
   const dim3 grid((outSize + block.x - 1) / block.x);
 
+/*
   AT_DISPATCH_FLOATING_TYPES_AND_HALF(in.type(), "foo", ([&]
    {
      printType<scalar_t>();
 
    }));
+*/
 
   AT_DISPATCH_FLOATING_TYPES_AND_HALF(in.type(), "bilinearForwardKernel", ([&]
     {
