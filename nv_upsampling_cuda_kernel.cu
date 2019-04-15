@@ -10,7 +10,7 @@
 
 #include <cuda.h>
 #include <cuda_runtime.h>
-#include <cuda_fp16.h>
+//#include <cuda_fp16.h>
 
 
 
@@ -21,9 +21,11 @@
 
 */
 
-__device__ __forceinline__ void fastFp16AtomicAdd(__half* __restrict__ tensor,
+template <typename scalar_t, typename = typename std::enable_if<std::is_same<c10::Half, scalar_t>::value>::type>
+__device__ __forceinline__ void fastSpecializedAtomicAdd(scalar_t* tensor,
                                   int index, int numel,
-                                  __half value) {
+                                  scalar_t value) {
+
 
   int addr = __alignof(tensor);
   bool tensor_aligned = addr % 4 == 0;
@@ -47,94 +49,25 @@ __device__ __forceinline__ void fastFp16AtomicAdd(__half* __restrict__ tensor,
    }
 }
 
+template <typename scalar_t, typename = typename std::enable_if<!std::is_same<c10::Half, scalar_t>::value>::type>
+__device__ __forceinline__ void fastSpecializedAtomicAdd(scalar_t* tensor,
+                                  int index, int numel,
+                                  scalar_t value) {
 
-/*
-def bilinear_upsample(input, new_h, new_w):
-    orig_h, orig_w, channels = input.shape
-    result = np.zeros((new_h, new_w, channels)).astype(np.float32)
-    y_scale = orig_h / new_h
-    x_scale = orig_w / new_w
-    for h in range(new_h):
-        for w in range(new_w):
-            for c in range(channels):
-                y_scaled_pos = h * y_scale
-                x_scaled_pos = w * x_scale
-                y1 = int(y_scaled_pos)
-                x1 = int(x_scaled_pos)
-                y2 = min(y1 + 1, orig_h - 1)
-                x2 = min(x1 + 1, orig_w - 1)
-                q11 = input[y1][x1][c]
-                q12 = input[y1][x2][c]
-                q21 = input[y2][x1][c]
-                q22 = input[y2][x2][c]
-                yfloat = y_scaled_pos - y1
-                xfloat = x_scaled_pos - x1
-                xmix1 = (1 - xfloat) * q11 + xfloat * q12
-                xmix2 = (1 - xfloat) * q21 + xfloat * q22
-                ymix = (1 - yfloat) * xmix1 + yfloat * xmix2
-                result[h, w, c] = ymix
-               
-    return result
-*/
+  atomicAdd(tensor + index, value);
 
+}
+
+template <class scalar_t>
+__device__  __forceinline__ void fastAtomicAdd(scalar_t* __restrict__ tensor,
+    int index, int numel, scalar_t value) {
+
+
+    fastSpecializedAtomicAdd(tensor, index, numel, value);
+
+}
 
 // https://github.com/pytorch/pytorch/blob/master/aten/src/THCUNN/TemporalUpSamplingLinear.cu
-
-/*
-
-template<typename Acctype>
-__device__ __forceinline__
-static Acctype linear_upsampling_compute_source_index(
-                          Acctype scale, int dst_index, bool align_corners) {
-  if (align_corners) {
-    return scale * dst_index;
-  } else {
-    Acctype src_idx = scale * (dst_index + Acctype(0.5)) - Acctype(0.5);
-    return src_idx < Acctype(0) ? Acctype(0) : src_idx;
-  }
-}
-*/
-
-/*
-__global__ void caffe_gpu_interp2_kernel(const int n,
-    const Acctype rwidth, const bool align_corners,
-    const THCDeviceTensor<Dtype, 3> data1, THCDeviceTensor<Dtype, 3> data2) {
-  int index = threadIdx.x + blockIdx.x * blockDim.x;
-  const int batchsize = data1.getSize(0);
-  const int channels = data1.getSize(1);
-  const int width1 = data1.getSize(2);
-  const int width2 = data2.getSize(2);
-
-  if (index < n) {
-    const int w2 = index % width2;
-    // special case: just copy
-    if (width1 == width2) {
-      const int w1 = w2;
-      for (int n = 0; n < batchsize ; n++){
-        for (int c = 0; c < channels; ++c) {
-          const Dtype val = data1[n][c][w1];
-          data2[n][c][w2] = val;
-        }
-      }
-      return;
-    }
-    //
-    const Acctype w1r = linear_upsampling_compute_source_index<Acctype>(rwidth, w2, align_corners);
-    const int w1 = w1r;
-    const int w1p = (w1 < width1 - 1) ? 1 : 0;
-    const Acctype w1lambda = w1r - w1;
-    const Acctype w0lambda = Acctype(1) - w1lambda;
-    //
-    for (int n = 0; n < batchsize ; n++){
-        for (int c = 0; c < channels; ++c) {
-        const Acctype val = w0lambda * data1[n][c][w1]
-                            + w1lambda * data1[n][c][w1+w1p];
-        data2[n][c][w2] = ScalarConvert<Acctype, Dtype>::to(val);
-      }
-    }
-  }
-}
-*/
 
 __device__ __forceinline__ int idx(
     const int n,
@@ -159,6 +92,9 @@ __global__ void bilinearForwardKernel(
     const scalar_t* const  __restrict__ X,
     scalar_t* const __restrict__ Y) {
 
+    const float height_scale = 1.0f * output_height / input_height;
+    const float width_scale = 1.0f * output_width / input_width;
+
   for (size_t index = blockDim.x * blockIdx.x + threadIdx.x;
        index < output_size; index += blockDim.x * gridDim.x) {
 
@@ -170,9 +106,6 @@ __global__ void bilinearForwardKernel(
     const int c = indexTemp % num_channels;
     indexTemp /= num_channels;
     const int n = indexTemp;
-
-    const float height_scale = 1.0f * output_height / input_height;
-    const float width_scale = 1.0f * output_width / input_width;
 
     const int in_y = fminf(out_y / height_scale, input_height - 1);
     const int in_x = fminf(out_x / width_scale, input_width - 1);
@@ -234,17 +167,18 @@ __global__ void bilinearForwardKernel(
 
 // input is dY, output is dX
 template <typename scalar_t>
-__global__ void bilinearBackwardKenel(
+__global__ void bilinearBackwardKernel(
     const int input_size,
     const int num_channels,
     const int input_height,
     const int input_width,
     const int output_height,
     const int output_width,
-    const float height_scale,
-    const float width_scale,
     const scalar_t* const __restrict__ dY,
     scalar_t* const __restrict__ dX) {
+
+    const float height_scale = 1.0f * output_height / input_height;
+    const float width_scale = 1.0f * output_width / input_width;
 
     for (size_t index = blockDim.x * blockIdx.x + threadIdx.x;
          index < input_size; index += blockDim.x * gridDim.x) {
@@ -282,32 +216,24 @@ __global__ void bilinearBackwardKenel(
 
     const scalar_t dYi = __ldg(&dY[index]);
 
+      // TODO: add other three cases
 
-    if (std::is_same<scalar_t, __half>::value) {
-
-      fastFp16AtomicAdd(&dX, 
+      fastAtomicAdd<scalar_t>(dX, 
           idx(n, num_channels, c, output_height, output_width, h1, w1),
-          numel,
-          h0lambda * w0lambda * dYi
+          123, // dX->numel(),
+          static_cast<scalar_t>(h0lambda * w0lambda * dYi)
       );
 
 /*
-__device__ __forceinline__ void fastFp16AtomicAdd(__half* __restrict__ tensor,
-                                  int index, int numel,
-                                  __half value)
-*/
-
-    } else {
-
       atomicAdd(
           &dX[idx(n, num_channels, c, output_height, output_width, h1, w1)],
-          h0lambda * w0lambda * dYi);
+          static_cast<scalar_t>(h0lambda * w0lambda * dYi));
       atomicAdd(
           &dX[idx(n, num_channels, c, output_height, output_width, h1, w1 + w1p)],
-          h0lambda * w1lambda * dYi);
+          static_cast<scalar_t>(h0lambda * w1lambda * dYi));
       atomicAdd(
           &dX[idx(n, num_channels, c, output_height, output_width, h1 + h1p, w1)],
-          h1lambda * w0lambda * dYi);
+          static_cast<scalar_t>(h1lambda * w0lambda * dYi));
       atomicAdd(
         &dX[idx(
             n,
@@ -317,8 +243,25 @@ __device__ __forceinline__ void fastFp16AtomicAdd(__half* __restrict__ tensor,
             output_width,
             h1 + h1p,
             w1 + w1p)],
-        h1lambda * w1lambda * dYi);
+        static_cast<scalar_t>(h1lambda * w1lambda * dYi));
+
+ */
+
   }
+}
+
+template <typename scalar_t>
+void printType() {
+  if (std::is_same<float, scalar_t>::value) {
+      std::cout << "\n\nfwd float \n\n" << std::endl;
+  } else if (std::is_same<c10::Half, scalar_t>::value) {
+      std::cout << "\n\nfwd half \n\n" << std::endl;
+  } else if (std::is_same<double, scalar_t>::value) {
+      std::cout << "\n\nfwd double \n\n" << std::endl;
+  } else {
+    std::cout << "\n\nfwd something else \n\n" << std::endl;
+  }
+
 }
 
 at::Tensor bilinear_cuda_forward(at::Tensor& in, const int new_h, const int new_w) {
@@ -341,6 +284,12 @@ at::Tensor bilinear_cuda_forward(at::Tensor& in, const int new_h, const int new_
   const int outSize = nIn * cIn * new_h * new_w;
   const dim3 block(1024);
   const dim3 grid((outSize + block.x - 1) / block.x);
+
+  AT_DISPATCH_FLOATING_TYPES_AND_HALF(in.type(), "foo", ([&]
+   {
+     printType<scalar_t>();
+
+   }));
 
   AT_DISPATCH_FLOATING_TYPES_AND_HALF(in.type(), "bilinearForwardKernel", ([&]
     {
@@ -378,9 +327,27 @@ at::Tensor bilinear_cuda_backward(at::Tensor& in, const int out_h, const int out
   const dim3 block(1024);
   const dim3 grid((inSize + block.x - 1) / block.x);
 
+/*
+template <typename scalar_t>
+__global__ void bilinearBackwardKernel(
+    const int input_size,
+    const int num_channels,
+    const int input_height,
+    const int input_width,
+    const int output_height,
+    const int output_width,
+    const float height_scale,
+    const float width_scale,
+    const scalar_t* const __restrict__ dY,
+    scalar_t* const __restrict__ dX) {
+
+*/
+
+  // AT_DISPATCH_FLOATING_TYPES_AND_HALF
+
   AT_DISPATCH_FLOATING_TYPES_AND_HALF(in.type(), "bilinearBackwardKernel", ([&]
     {
-     
+
         bilinearBackwardKernel<scalar_t><<<grid, block>>>(
                                         in.numel(),
                                         cIn,
@@ -397,4 +364,6 @@ at::Tensor bilinear_cuda_backward(at::Tensor& in, const int out_h, const int out
     AT_CHECK(cudaGetLastError() == cudaSuccess,
           "issue with bilinearForwardKernel, CUDA code ",
           cudaGetLastError());
+
+    return out;
 }

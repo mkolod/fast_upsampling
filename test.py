@@ -3,15 +3,17 @@ import torch.nn.functional as F
 
 from upsampling import Interpolation
 
-fp16 = False
+fp16 = True
 
-num_runs = 10
+num_runs = 20
 
 log = False
 
-foo = torch.randn(1, 1, 5, 5).cuda()
+foo = torch.randn(1, 1, 5, 5, requires_grad=True).cuda()
 if fp16:
     foo = foo.half()
+
+print(foo)
 
 #foo = torch.randn(16, 3, 224, 224, requires_grad=True).cuda().half()
 
@@ -26,9 +28,8 @@ if log:
 
 interp = Interpolation()
 
-
 for i in range(num_runs):
-    baz = interp(foo, 10, 10)
+    baz = interp(foo, scale_factor=2)
 
 if log:
     print("My implementation")
@@ -42,11 +43,14 @@ if log:
     print("Mean percentage error: {}".format(torch.mean(metric)))
     print("Max percentage error: {}".format(torch.max(metric)))
 
-#baz = bar.sum()
-# baz.backward()
 
-#loss_val.backward()
+bar2 = bar.sum()
+bar2.backward()
 
-#print(loss_val)
+baz2 = baz.sum()
+baz2.backward()
 
+print(bar2.grad)
+print(baz2.grad)
 
+print(foo.grad)
