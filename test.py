@@ -49,8 +49,3 @@ bar2.backward()
 
 baz2 = baz.sum()
 baz2.backward()
-
-print(bar2.grad)
-print(baz2.grad)
-
-print(foo.grad)

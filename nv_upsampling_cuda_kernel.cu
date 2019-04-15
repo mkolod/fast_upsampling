@@ -2,27 +2,15 @@
 
 #include <ATen/ATen.h>
 
-//#include "caffe2/core/context_gpu.h"
-//#include "caffe2/operators/upsample_op.h"
-//#include "caffe2/utils/math.h"
-
 #include "bilinear.h"
 
 #include <cuda.h>
 #include <cuda_runtime.h>
-//#include <cuda_fp16.h>
 
 
-
-/*
-  TODO: Check out the MXNet implementation: https://github.com/apache/incubator-mxnet/blob/master/src/operator/bilinear_sampler.cu
-
-  TODO: use type traits (std::is_same<scalar_t, __half>::value) to see when to call this instead of vanilla atomicAdd
-
-*/
-
-template <typename scalar_t, typename = typename std::enable_if<std::is_same<c10::Half, scalar_t>::value>::type>
-__device__ __forceinline__ void fastSpecializedAtomicAdd(scalar_t* tensor,
+template <typename scalar_t, typename std::enable_if<std::is_same<c10::Half, scalar_t>::value>::type* = nullptr>
+__device__ __forceinline__
+void fastSpecializedAtomicAdd(scalar_t* tensor,
                                   int index, int numel,
                                   scalar_t value) {
 
@@ -45,11 +33,11 @@ __device__ __forceinline__ void fastSpecializedAtomicAdd(scalar_t* tensor,
     atomicAdd(reinterpret_cast<__half2*>(tensor) + index/2, value2);
 
    } else if (index == numel - 1) {
-     atomicAdd(tensor + index, value);
+     atomicAdd(reinterpret_cast<__half*>(tensor) + index, static_cast<__half>(value));
    }
 }
 
-template <typename scalar_t, typename = typename std::enable_if<!std::is_same<c10::Half, scalar_t>::value>::type>
+template <typename scalar_t, typename std::enable_if<!std::is_same<c10::Half, scalar_t>::value>::type* = nullptr>
 __device__ __forceinline__ void fastSpecializedAtomicAdd(scalar_t* tensor,
                                   int index, int numel,
                                   scalar_t value) {
@@ -216,13 +204,57 @@ __global__ void bilinearBackwardKernel(
 
     const scalar_t dYi = __ldg(&dY[index]);
 
+    const int out_numel = input_size / (input_height * input_width) * output_height * output_width;
+
+/*
+__global__ void bilinearBackwardKernel(
+    const int input_size,
+    const int num_channels,
+    const int input_height,
+    const int input_width,
+    const int output_height,
+    const int output_width,
+    const scalar_t* const __restrict__ dY,
+    scalar_t* const __restrict__ dX) {
+*/
+
       // TODO: add other three cases
 
-      fastAtomicAdd<scalar_t>(dX, 
+      fastAtomicAdd<scalar_t>(
+          dX, 
           idx(n, num_channels, c, output_height, output_width, h1, w1),
-          123, // dX->numel(),
+          out_numel,
           static_cast<scalar_t>(h0lambda * w0lambda * dYi)
       );
+
+      fastAtomicAdd<scalar_t>(
+        dX,
+        idx(n, num_channels, c, output_height, output_width, h1, w1 + w1p),
+        out_numel,
+        static_cast<scalar_t>(h0lambda * w1lambda * dYi)
+      );
+
+      fastAtomicAdd<scalar_t>(
+        dX,
+        idx(n, num_channels, c, output_height, output_width, h1 + h1p, w1),
+        out_numel,
+        static_cast<scalar_t>(h1lambda * w0lambda * dYi)
+      );
+
+      fastAtomicAdd<scalar_t>(
+        dX,
+        idx(
+            n,
+            num_channels,
+            c,
+            output_height,
+            output_width,
+            h1 + h1p,
+            w1 + w1p),
+        out_numel,
+        static_cast<scalar_t>(h1lambda * w1lambda * dYi)
+      );
+
 
 /*
       atomicAdd(
