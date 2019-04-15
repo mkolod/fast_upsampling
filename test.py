@@ -58,14 +58,21 @@ def set_grad(var):
         var.grad = grad
     return hook
 
+bar2 = bar.mean()
+baz2 = baz.mean()
+
 bar.register_hook(set_grad(bar))
 baz.register_hook(set_grad(baz))
 
-bar2 = bar.sum()
-bar2.backward(retain_graph=True)
+bar2.register_hook(set_grad(bar2))
+baz2.register_hook(set_grad(baz2))
 
-baz2 = baz.sum()
+bar2.backward(retain_graph=True)
 baz2.backward(retain_graph=True)
+
+print("bar2: {}".format(bar2))
+print("baz2: {}".format(baz2))
+
 
 spam = bar.detach().squeeze().permute(1, 2, 0).float().cpu().numpy().astype(np.uint8)
 
@@ -89,7 +96,14 @@ pic = ham
 
 imsave('resized.jpg', pic)
 
-print("Maximum backprop difference:")
+#print(bar.grad, baz.grad)
+print(bar2.grad, baz2.grad)
+
+
+print("Maximum backprop difference for [bar, baz]:")
 print(torch.max(torch.abs(bar.grad - baz.grad)))
+
+print("Maximum backprop difference for [bar2, baz2]:")
+print(torch.max(torch.abs(bar2.grad - baz2.grad)))
 
 # print(bar - baz)
