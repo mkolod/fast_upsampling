@@ -91,22 +91,18 @@ __global__ void bilinearForwardKernel(
       const float rwidth =
           output_width > 1 ? (input_width - 1.f) / (output_width - 1.f) : 0.f;
 
-      // Compute Y axis lambdas
       const float h1r = rheight * out_y;
       const int h1 = static_cast<int>(h1r);
       const int h1p = (h1 < input_height - 1) ? 1 : 0;
       const float h1lambda = h1r - h1;
       const float h0lambda = 1.f - h1lambda;
 
-      // Compute X axis lambdas
       const float w1r = rwidth * out_x;
       const int w1 = static_cast<int>(w1r);
       const int w1p = (w1 < input_width - 1) ? 1 : 0;
       const float w1lambda = w1r - w1;
       const float w0lambda = 1.f - w1lambda;
 
-      // TODO: check if this is correct
-      // n * chw + c*hw + h*w + w;
       int out_idx = n * num_channels * output_height * output_width +
                     c * output_height * output_width + out_y * output_width +
                     out_x;
@@ -123,7 +119,6 @@ __global__ void bilinearForwardKernel(
                                        input_width, h1 + h1p, w1 + w1p)])));
     }
   }
-  //  }
 }
 
 // input is dY, output is dX
