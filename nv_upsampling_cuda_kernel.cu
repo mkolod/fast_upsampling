@@ -14,10 +14,7 @@ void fastSpecializedAtomicAdd(scalar_t* tensor,
                                   scalar_t value) {
 
 
-  int addr = __alignof(tensor);
-  bool tensor_aligned = addr % 4 == 0;
-
-  if (tensor_aligned) {
+  if (index < numel - 1) {
     __half2 value2;
 
     if (index % 2 == 0 && index < (numel - 1)) {
@@ -31,7 +28,8 @@ void fastSpecializedAtomicAdd(scalar_t* tensor,
 
     atomicAdd(reinterpret_cast<__half2*>(tensor) + index/2, value2);
 
-   } else if (index == numel - 1) {
+    } else {
+
      atomicAdd(reinterpret_cast<__half*>(tensor) + index, static_cast<__half>(value));
    }
 }
