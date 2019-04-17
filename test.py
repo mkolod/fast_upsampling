@@ -9,9 +9,9 @@ from upsampling import Interpolation
 
 fp16 = True
 
-num_runs = 1
+num_runs = 20
 
-log = True
+log = False
 
 # foo = torch.randn(1, 1, 5, 5, requires_grad=True).cuda()
 
@@ -58,25 +58,26 @@ def set_grad(var):
         var.grad = grad
     return hook
 
-bar2 = bar.mean()
-baz2 = baz.mean()
+bar2 = bar.sum()
+baz2 = baz.sum()
 
-bar.register_hook(set_grad(bar))
-baz.register_hook(set_grad(baz))
+#bar.register_hook(set_grad(bar))
+#baz.register_hook(set_grad(baz))
+#
+#bar2.register_hook(set_grad(bar2))
+#baz2.register_hook(set_grad(baz2))
 
-bar2.register_hook(set_grad(bar2))
-baz2.register_hook(set_grad(baz2))
+for i in range(num_runs):
+    bar2.backward(retain_graph=True)
+    baz2.backward(retain_graph=True)
 
-bar2.backward(retain_graph=True)
-baz2.backward(retain_graph=True)
-
-print("bar2: {}".format(bar2))
-print("baz2: {}".format(baz2))
+#print("bar2: {}".format(bar2))
+#print("baz2: {}".format(baz2))
 
 
-spam = bar.detach().squeeze().permute(1, 2, 0).float().cpu().numpy().astype(np.uint8)
+#spam = bar.detach().squeeze().permute(1, 2, 0).float().cpu().numpy().astype(np.uint8)
 
-ham = baz.detach().squeeze().permute(1, 2, 0).float().cpu().numpy().astype(np.uint8)
+#ham = baz.detach().squeeze().permute(1, 2, 0).float().cpu().numpy().astype(np.uint8)
 
 #print(spam.shape)
 #print(ham.shape)
@@ -86,7 +87,7 @@ ham = baz.detach().squeeze().permute(1, 2, 0).float().cpu().numpy().astype(np.ui
 #print(spam - ham)
 
 #pic = np.squeeze(spam).swapaxes(0, 1).swapaxes(1, 2).astype(np.uint8)
-pic = ham
+#pic = ham
 #print(pic.shape)
 #print(pic.dtype)
 
@@ -94,16 +95,16 @@ pic = ham
 #print("\n\n")
 #print(pic)
 
-imsave('resized.jpg', pic)
+#imsave('resized.jpg', pic)
 
 #print(bar.grad, baz.grad)
-print(bar2.grad, baz2.grad)
+#print(bar2.grad, baz2.grad)
 
 
-print("Maximum backprop difference for [bar, baz]:")
-print(torch.max(torch.abs(bar.grad - baz.grad)))
-
-print("Maximum backprop difference for [bar2, baz2]:")
-print(torch.max(torch.abs(bar2.grad - baz2.grad)))
+#print("Maximum backprop difference for [bar, baz]:")
+#print(torch.max(torch.abs(bar.grad - baz.grad)))
+#
+#print("Maximum backprop difference for [bar2, baz2]:")
+#print(torch.max(torch.abs(bar2.grad - baz2.grad)))
 
 # print(bar - baz)

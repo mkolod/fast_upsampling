@@ -7,7 +7,6 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
-
 template <typename scalar_t, typename std::enable_if<std::is_same<c10::Half, scalar_t>::value>::type* = nullptr>
 __device__ __forceinline__
 void fastSpecializedAtomicAdd(scalar_t* tensor,
@@ -120,36 +119,36 @@ __global__ void bilinearForwardKernel(
     Y[index] =
         static_cast<scalar_t>(h0lambda *
              (w0lambda *
-                  X[idx(
-                      n, num_channels, c, input_height, input_width, h1, w1)] +
+                  __ldg(&X[idx(
+                      n, num_channels, c, input_height, input_width, h1, w1)]) +
               w1lambda *
-                  X[idx(
+                  __ldg(&X[idx(
                       n,
                       num_channels,
                       c,
                       input_height,
                       input_width,
                       h1,
-                      w1 + w1p)]) +
+                      w1 + w1p)])) +
          h1lambda *
              (w0lambda *
-                  X[idx(
+                  __ldg(&X[idx(
                       n,
                       num_channels,
                       c,
                       input_height,
                       input_width,
                       h1 + h1p,
-                      w1)] +
+                      w1)]) +
               w1lambda *
-                  X[idx(
+                  __ldg(&X[idx(
                       n,
                       num_channels,
                       c,
                       input_height,
                       input_width,
                       h1 + h1p,
-                      w1 + w1p)]));
+                      w1 + w1p)])));
   }
 }
 
