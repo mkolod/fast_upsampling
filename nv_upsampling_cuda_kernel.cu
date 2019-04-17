@@ -65,6 +65,8 @@ __device__ __forceinline__ int idx(
   return ((n * num_channels + c) * height + y) * width + x;
 }
 
+//  return ((n * num_channels + c) * height + y) * width + x;
+
 // input is X, output is Y
 template <typename scalar_t>
 __global__ void bilinearForwardKernel(
@@ -97,7 +99,7 @@ __global__ void bilinearForwardKernel(
     const int out_x = indexTemp % output_width;
     indexTemp /= output_width;
     const int out_y = indexTemp % output_height;
-    indexTemp /= output_height;
+//    indexTemp /= output_height;
 
 //    const int c = indexTemp % num_channels;
 //    indexTemp /= num_channels;
@@ -125,7 +127,11 @@ __global__ void bilinearForwardKernel(
     const float w1lambda = w1r - w1;
     const float w0lambda = 1.f - w1lambda;
 
-    Y[index] =
+    // TODO: check if this is correct
+    // n * chw + c*hw + h*w + w; 
+    int out_idx = n * num_channels * output_height * output_width + c * output_height * output_width + out_y * output_width + out_x;
+
+    Y[out_idx] =
         static_cast<scalar_t>(h0lambda *
              (w0lambda *
                   __ldg(&X[idx(
