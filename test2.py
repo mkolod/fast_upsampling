@@ -11,7 +11,7 @@ fp16 = True
 
 num_runs = 100
 
-log = False
+log = True
 
 # foo = torch.randn(1, 1, 5, 5, requires_grad=True).cuda()
 
@@ -51,9 +51,6 @@ if log:
     print("Max fprop difference:")
     
     print(torch.max(torch.abs(bar - baz)))
-    metric = torch.abs(bar - baz) / torch.abs(bar) * 100
-    print("Mean percentage error: {}".format(torch.mean(metric)))
-    print("Max percentage error: {}".format(torch.max(metric)))
 
 def set_grad(var):
     def hook(grad):

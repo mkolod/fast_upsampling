@@ -51,15 +51,12 @@ __device__ __forceinline__ void fastAtomicAdd(scalar_t *__restrict__ tensor,
   fastSpecializedAtomicAdd(tensor, index, numel, value);
 }
 
-// https://github.com/pytorch/pytorch/blob/master/aten/src/THCUNN/TemporalUpSamplingLinear.cu
-
 __device__ __forceinline__ int idx(const int n, const int num_channels,
                                    const int c, const int height,
                                    const int width, const int y, const int x) {
   return ((n * num_channels + c) * height + y) * width + x;
 }
 
-//  return ((n * num_channels + c) * height + y) * width + x;
 
 // input is X, output is Y
 template <typename scalar_t>
@@ -76,24 +73,14 @@ __global__ void bilinearForwardKernel(
 
   const int index = blockDim.x * blockIdx.x + threadIdx.x;
 
-  //  for (size_t index = blockDim.x * blockIdx.x + threadIdx.x;
-  //       index < output_size; index += blockDim.x * gridDim.x) {
-
-  // TODO: loop over n and in within a thread
+  int indexTemp = index;
+  const int out_x = indexTemp % output_width;
+  indexTemp /= output_width;
+  const int out_y = indexTemp % output_height;
 
   for (int n = 0; n < batch_size; n++) {
 
     for (int c = 0; c < num_channels; c++) {
-
-      int indexTemp = index;
-      const int out_x = indexTemp % output_width;
-      indexTemp /= output_width;
-      const int out_y = indexTemp % output_height;
-      //    indexTemp /= output_height;
-
-      //    const int c = indexTemp % num_channels;
-      //    indexTemp /= num_channels;
-      //    const int n = indexTemp;
 
       const int in_y = fminf(out_y / height_scale, input_height - 1);
       const int in_x = fminf(out_x / width_scale, input_width - 1);
