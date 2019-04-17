@@ -71,6 +71,7 @@ for i in range(num_runs):
     bar2.backward(retain_graph=True)
     baz2.backward(retain_graph=True)
 
+
 #print("bar2: {}".format(bar2))
 #print("baz2: {}".format(baz2))
 
