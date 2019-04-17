@@ -14,19 +14,19 @@ void fastSpecializedAtomicAdd(scalar_t* tensor,
                                   scalar_t value) {
 
 
-  if (index < numel - 1) {
-    __half2 value2;
-
     if (index % 2 == 0 && index < (numel - 1)) {
+
+      __half2 value2;
       value2.x = value;
       value2.y = __int2half_rz(0);
-    }
-    if (index % 2 == 1) {
+      atomicAdd(reinterpret_cast<__half2*>(tensor) + index/2, value2);
+
+    } else if (index % 2 == 1) {
+
+      __half2 value2;
       value2.x = __int2half_rz(0);
       value2.y = value;
-    }
-
-    atomicAdd(reinterpret_cast<__half2*>(tensor) + index/2, value2);
+      atomicAdd(reinterpret_cast<__half2*>(tensor) + index/2, value2);
 
     } else {
 
