@@ -272,7 +272,7 @@ at::Tensor bilinear_cuda_forward(at::Tensor& in, const int new_h, const int new_
   at::Tensor out = at::empty({nIn, cIn, new_h, new_w}, in.options());
 
   const int outSize = nIn * cIn * new_h * new_w;
-  const dim3 block(1024);
+  const dim3 block(1024); //1024);
   const dim3 grid(((outSize / cIn / nIn) + block.x - 1) / block.x);
 
 /*
