@@ -203,20 +203,6 @@ __global__ void bilinearBackwardKernel(
 
     const int out_numel = input_size / (input_height * input_width) * output_height * output_width;
 
-/*
-__global__ void bilinearBackwardKernel(
-    const int input_size,
-    const int num_channels,
-    const int input_height,
-    const int input_width,
-    const int output_height,
-    const int output_width,
-    const scalar_t* const __restrict__ dY,
-    scalar_t* const __restrict__ dX) {
-*/
-
-      // TODO: add other three cases
-
       fastAtomicAdd<scalar_t>(
           dX, 
           idx(n, num_channels, c, output_height, output_width, h1, w1),
@@ -252,58 +238,10 @@ __global__ void bilinearBackwardKernel(
         static_cast<scalar_t>(h1lambda * w1lambda * dYi)
       );
 
-
-/*
-      atomicAdd(
-          &dX[idx(n, num_channels, c, output_height, output_width, h1, w1)],
-          static_cast<scalar_t>(h0lambda * w0lambda * dYi));
-      atomicAdd(
-          &dX[idx(n, num_channels, c, output_height, output_width, h1, w1 + w1p)],
-          static_cast<scalar_t>(h0lambda * w1lambda * dYi));
-      atomicAdd(
-          &dX[idx(n, num_channels, c, output_height, output_width, h1 + h1p, w1)],
-          static_cast<scalar_t>(h1lambda * w0lambda * dYi));
-      atomicAdd(
-        &dX[idx(
-            n,
-            num_channels,
-            c,
-            output_height,
-            output_width,
-            h1 + h1p,
-            w1 + w1p)],
-        static_cast<scalar_t>(h1lambda * w1lambda * dYi));
-
- */
-
   }
 }
-
-/*
-template <typename scalar_t>
-void printType() {
-  if (std::is_same<float, scalar_t>::value) {
-      std::cout << "\n\nfwd float \n\n" << std::endl;
-  } else if (std::is_same<c10::Half, scalar_t>::value) {
-      std::cout << "\n\nfwd half \n\n" << std::endl;
-  } else if (std::is_same<double, scalar_t>::value) {
-      std::cout << "\n\nfwd double \n\n" << std::endl;
-  } else {
-    std::cout << "\n\nfwd something else \n\n" << std::endl;
-  }
-
-}
-*/
 
 at::Tensor bilinear_cuda_forward(at::Tensor& in, const int new_h, const int new_w) {
-
-  // TODO: grid
-  // TODO: block
-  // TODO: make sure to specialize for half2 case
-
-  // TODO: input dimensions
-
-  // TODO: create new tensor here
 
   const int nIn = in.size(0);
   const int cIn = in.size(1);
@@ -359,24 +297,6 @@ at::Tensor bilinear_cuda_backward(at::Tensor& in, const int out_h, const int out
   const int inSize = nIn * cIn * hIn * wIn;
   const dim3 block(1024);
   const dim3 grid((inSize + block.x - 1) / block.x);
-
-/*
-template <typename scalar_t>
-__global__ void bilinearBackwardKernel(
-    const int input_size,
-    const int num_channels,
-    const int input_height,
-    const int input_width,
-    const int output_height,
-    const int output_width,
-    const float height_scale,
-    const float width_scale,
-    const scalar_t* const __restrict__ dY,
-    scalar_t* const __restrict__ dX) {
-
-*/
-
-  // AT_DISPATCH_FLOATING_TYPES_AND_HALF
 
   AT_DISPATCH_FLOATING_TYPES_AND_HALF(in.type(), "bilinearBackwardKernel", ([&]
     {
