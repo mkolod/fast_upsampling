@@ -80,17 +80,28 @@ __global__ void bilinearForwardKernel(
     const float height_scale = 1.0f * output_height / input_height;
     const float width_scale = 1.0f * output_width / input_width;
 
-  for (size_t index = blockDim.x * blockIdx.x + threadIdx.x;
-       index < output_size; index += blockDim.x * gridDim.x) {
+    const int batch_size = output_size / num_channels / output_height / output_width;
+
+    const int index = blockDim.x * blockIdx.x + threadIdx.x;
+
+//  for (size_t index = blockDim.x * blockIdx.x + threadIdx.x;
+//       index < output_size; index += blockDim.x * gridDim.x) {
+
+    // TODO: loop over n and in within a thread
+
+    for (int n = 0; n < batch_size; n++) {
+
+     for (int c = 0; c < num_channels; c++) {
 
     int indexTemp = index;
     const int out_x = indexTemp % output_width;
     indexTemp /= output_width;
     const int out_y = indexTemp % output_height;
     indexTemp /= output_height;
-    const int c = indexTemp % num_channels;
-    indexTemp /= num_channels;
-    const int n = indexTemp;
+
+//    const int c = indexTemp % num_channels;
+//    indexTemp /= num_channels;
+//    const int n = indexTemp;
 
     const int in_y = fminf(out_y / height_scale, input_height - 1);
     const int in_x = fminf(out_x / width_scale, input_width - 1);
@@ -147,7 +158,11 @@ __global__ void bilinearForwardKernel(
                       input_width,
                       h1 + h1p,
                       w1 + w1p)])));
+
   }
+
+  }
+//  }
 }
 
 // input is dY, output is dX
@@ -252,7 +267,7 @@ at::Tensor bilinear_cuda_forward(at::Tensor& in, const int new_h, const int new_
 
   const int outSize = nIn * cIn * new_h * new_w;
   const dim3 block(1024);
-  const dim3 grid((outSize + block.x - 1) / block.x);
+  const dim3 grid(((outSize / cIn / nIn) + block.x - 1) / block.x);
 
 /*
   AT_DISPATCH_FLOATING_TYPES_AND_HALF(in.type(), "foo", ([&]
