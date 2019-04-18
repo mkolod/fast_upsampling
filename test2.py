@@ -11,7 +11,7 @@ fp16 = True
 
 num_runs = 100
 
-log = True
+log = False
 
 # foo = torch.randn(1, 1, 5, 5, requires_grad=True).cuda()
 

@@ -78,32 +78,32 @@ __global__ void bilinearForwardKernel(
   indexTemp /= output_width;
   const int out_y = indexTemp % output_height;
 
+  const int in_y = fminf(out_y / height_scale, input_height - 1);
+  const int in_x = fminf(out_x / width_scale, input_width - 1);
+
+  const float rheight = output_height > 1
+                            ? (input_height - 1.f) / (output_height - 1.f)
+                            : 0.f;
+  const float rwidth =
+      output_width > 1 ? (input_width - 1.f) / (output_width - 1.f) : 0.f;
+
+  const float h1r = rheight * out_y;
+  const int h1 = static_cast<int>(h1r);
+  const int h1p = (h1 < input_height - 1) ? 1 : 0;
+  const float h1lambda = h1r - h1;
+  const float h0lambda = 1.f - h1lambda;
+
+  const float w1r = rwidth * out_x;
+  const int w1 = static_cast<int>(w1r);
+  const int w1p = (w1 < input_width - 1) ? 1 : 0;
+  const float w1lambda = w1r - w1;
+  const float w0lambda = 1.f - w1lambda;
+
   for (int n = 0; n < batch_size; n++) {
 
     for (int c = 0; c < num_channels; c++) {
 
-      const int in_y = fminf(out_y / height_scale, input_height - 1);
-      const int in_x = fminf(out_x / width_scale, input_width - 1);
-
-      const float rheight = output_height > 1
-                                ? (input_height - 1.f) / (output_height - 1.f)
-                                : 0.f;
-      const float rwidth =
-          output_width > 1 ? (input_width - 1.f) / (output_width - 1.f) : 0.f;
-
-      const float h1r = rheight * out_y;
-      const int h1 = static_cast<int>(h1r);
-      const int h1p = (h1 < input_height - 1) ? 1 : 0;
-      const float h1lambda = h1r - h1;
-      const float h0lambda = 1.f - h1lambda;
-
-      const float w1r = rwidth * out_x;
-      const int w1 = static_cast<int>(w1r);
-      const int w1p = (w1 < input_width - 1) ? 1 : 0;
-      const float w1lambda = w1r - w1;
-      const float w0lambda = 1.f - w1lambda;
-
-      int out_idx = n * num_channels * output_height * output_width +
+      const int out_idx = n * num_channels * output_height * output_width +
                     c * output_height * output_width + out_y * output_width +
                     out_x;
 
