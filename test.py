@@ -5,13 +5,13 @@ import numpy as np
 
 from matplotlib.image import imread, imsave
 
-from upsampling import Interpolation
+from bilinear_upsampling import Interpolation
 
 fp16 = True
 
 num_runs = 20
 
-log = False # True
+log =  False
 
 # foo = torch.randn(1, 1, 5, 5, requires_grad=True).cuda()
 

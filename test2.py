@@ -5,7 +5,7 @@ import numpy as np
 
 from matplotlib.image import imread, imsave
 
-from upsampling import Interpolation
+from bilinear_upsampling import Interpolation
 
 fp16 = True
 
