@@ -2,7 +2,7 @@
 
 ### What is this?
 
-This implementation of bilinear upsampling is about to 1.5x faster for fprop and 3.5x faster for backprop in fp16, with fp32 performance being the same as the original PyTorch implementation.
+This implementation of bilinear upsampling is considerably faster than the native PyTorch one in half precision (fp16). For example, for a tensor of size (128, 3, 224, 224), on a Titan V and Core i7-7800X CPU @ 3.50GHz, this implementation was 1.5x faster for fprop and 3.5x faster in backprop. Single precision (fp32) performance is essentially the same as the original implementation.
 
 ### Requirements
 * PyTorch 1.0.0+
