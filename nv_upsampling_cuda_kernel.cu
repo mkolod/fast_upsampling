@@ -103,11 +103,7 @@ __global__ void bilinearForwardKernel(
 
     for (int c = 0; c < num_channels; c++) {
 
-      const int out_idx = n * num_channels * output_height * output_width +
-                    c * output_height * output_width + out_y * output_width +
-                    out_x;
-
-      Y[out_idx] = static_cast<scalar_t>(
+      Y[idx(n, num_channels, c, output_height, output_width, out_y, out_x)] = static_cast<scalar_t>(
           h0lambda * (w0lambda * __ldg(&X[idx(n, num_channels, c, input_height,
                                               input_width, h1, w1)]) +
                       w1lambda * __ldg(&X[idx(n, num_channels, c, input_height,
