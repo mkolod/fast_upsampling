@@ -34,14 +34,17 @@ result = interp(data, scale_factor=2)
 Tensor dimensions: (128, 3, 224, 224)
 
 **fp16**
-|                |PyTorch                        |This Implementation          |
-|----------------|-------------------------------|-----------------------------|
-|forward         |685 us                         |482 us                       |
-|backward        |15.11 ms                       |4.17 ms                      |
+
+| Direction | PyTorch  | This Implementation |
+|-----------|----------|---------------------|
+| forward   | 685 us   | 482 us              |
+| backward  | 15.11 ms | 4.17 ms             |
 
 **fp32**
-|                |PyTorch                        |This Implementation          |
-|----------------|-------------------------------|-----------------------------|
-|forward         |788 us                         |629 us                       |
-|backward        |1.92 ms                        |1.49 ms                      |
+
+| Direction | PyTorch  | This Implementation |
+|-----------|----------|---------------------|
+| forward   | 788 us   | 629 us              |
+| backward  | 1.92 ms  | 1.49 ms             |
+
 
