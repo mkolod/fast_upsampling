@@ -33,6 +33,9 @@ result = interp(data, scale_factor=2)
 
 Tensor dimensions: (128, 3, 224, 224)
 
+Test env: Titan V GPU, Intel Core i7-7800X CPU @ 3.50GHz
+
+
 **fp16**
 
 | Direction | PyTorch  | This Implementation |
