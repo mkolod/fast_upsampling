@@ -7,7 +7,7 @@ This implementation of bilinear upsampling is considerably faster than the nativ
 ### Requirements
 * PyTorch 1.0.0+
 * CUDA 10.0+
-* For fp16: compute capability 6.0, and preferably 7.0+ (Tesla P100, Tesla V100, Titan V, GeForce RTX 2070/2080/2080Ti, etc.)
+* GPU with compute capability 7.0+ (Tesla V100, Titan V, GeForce RTX 2070/2080/2080Ti, etc.)
 
 ### Caveats
 
