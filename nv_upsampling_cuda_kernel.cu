@@ -117,6 +117,73 @@ __global__ void bilinearForwardKernel(
   }
 }
 
+// TODO: Launch this with thread per gradInput instead of gradOutput
+// input is dY, output is dX
+template <typename scalar_t>
+__global__ void bilinearBackwardKernel2(
+    const int input_size, const int num_channels, const int input_height,
+    const int input_width, const int output_height, const int output_width,
+    const scalar_t *const __restrict__ dY, scalar_t *const __restrict__ dX) {
+
+  const float height_scale = 1.0f * output_height / input_height;
+  const float width_scale = 1.0f * output_width / input_width;
+
+  const int index = blockDim.x * blockIdx.x + threadIdx.x;
+
+  int indexTemp = index;
+  const int in_x = indexTemp % input_width;
+  indexTemp /= input_width;
+  const int in_y = indexTemp % input_height;
+  indexTemp /= input_height;
+  const int c = indexTemp % num_channels;
+  indexTemp /= num_channels;
+
+//  const int n = indexTemp;
+  const int n = 0;
+
+  if (index > input_size - 1) {
+
+    return;
+  }
+
+  const int dst_idx = idx(n, num_channels, c, input_height, input_width, in_y, in_x);
+
+  // accumulator
+  float acc = 0.0f;
+
+  // TODO: figure out which Ys to loop over
+  // TODO: figure out what lambdas to use for which Y
+
+  const int y_window = ceilf(height_scale);
+  const int x_window = ceilf(width_scale);
+
+       // Not expecting overflow here, static_cast<int>(roundf(x)) is ugly
+  const int y_base_idx = lroundf(in_y * height_scale);
+  const int x_base_idx = lroundf(in_x * width_scale);
+
+int ctr = 0;
+
+  for (int out_y = y_base_idx; out_y <= min(y_base_idx + y_window, output_height - 1); out_y++) {
+    for (int out_x = x_base_idx; out_x <= min(x_base_idx + x_window, output_width - 1); out_x++) {
+
+    ctr += 1;
+
+      const int src_idx = idx(n, num_channels, c, output_height, output_width, out_y, out_x);
+
+      // TODO: calculate lambdas for y and x !!
+
+      acc += dY[src_idx]; 
+
+    }
+  }
+
+  if (index == 100) {
+    printf("index = %d, ctr = %d\n", index, ctr);
+  }
+
+  dX[dst_idx] = static_cast<scalar_t>(acc);
+}
+
 // input is dY, output is dX
 template <typename scalar_t>
 __global__ void bilinearBackwardKernel(
@@ -224,6 +291,42 @@ at::Tensor bilinear_cuda_backward(at::Tensor &in, const int out_h,
 
   at::Tensor out = at::empty({nIn, cIn, out_h, out_w}, in.options());
 
+  const int outSize = nIn * cIn * out_h * out_w;
+  const dim3 block(256);
+  const dim3 grid((outSize + block.x - 1) / block.x);
+
+/*
+  const int inSize = nIn * cIn * hIn * wIn;
+  const dim3 block(256);
+  const dim3 grid((inSize + block.x - 1) / block.x);
+*/
+
+  AT_DISPATCH_FLOATING_TYPES_AND_HALF(
+      in.type(), "bilinearBackwardKernel", ([&] {
+
+        bilinearBackwardKernel2<scalar_t><<<grid, block>>>(
+            in.numel(), cIn, hIn, wIn, out_h, out_w, in.data<scalar_t>(),
+            out.data<scalar_t>());
+
+      }));
+
+  AT_CHECK(cudaGetLastError() == cudaSuccess,
+           "issue with bilinearForwardKernel, CUDA code ", cudaGetLastError());
+
+  return out;
+}
+
+/*
+at::Tensor bilinear_cuda_backward(at::Tensor &in, const int out_h,
+                                  const int out_w) {
+
+  const int nIn = in.size(0);
+  const int cIn = in.size(1);
+  const int hIn = in.size(2);
+  const int wIn = in.size(3);
+
+  at::Tensor out = at::empty({nIn, cIn, out_h, out_w}, in.options());
+
   const int inSize = nIn * cIn * hIn * wIn;
   const dim3 block(256);
   const dim3 grid((inSize + block.x - 1) / block.x);
@@ -242,3 +345,4 @@ at::Tensor bilinear_cuda_backward(at::Tensor &in, const int out_h,
 
   return out;
 }
+*/
