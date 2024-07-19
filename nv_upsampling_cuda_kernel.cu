@@ -193,10 +193,6 @@ __global__ void bilinearBackwardKernel2(
     }
   }
 
-  if (index == 100) {
-    printf("index = %d, ctr = %d\n", index, ctr);
-  }
-
   dX[dst_idx] = static_cast<scalar_t>(acc);
 }
 
